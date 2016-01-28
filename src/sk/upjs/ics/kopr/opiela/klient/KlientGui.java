@@ -3,17 +3,19 @@ package sk.upjs.ics.kopr.opiela.klient;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowEvent;
-import java.io.BufferedInputStream;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 
 import javax.swing.JButton;
@@ -28,7 +30,7 @@ import javax.swing.SwingWorker;
 
 import net.miginfocom.swing.MigLayout;
 
-public class KlientGui {
+public class KlientGui implements PropertyChangeListener {
 
 	private static final int MIN_SOCKETS = 1;
 
@@ -49,7 +51,7 @@ public class KlientGui {
 	private JLabel lblPocetSoketov = new JLabel("Počet soketov:");
 
 	private JSpinner pocetSoketovSpinner = new JSpinner(new SpinnerNumberModel(
-			1, MIN_SOCKETS, MAX_SOCKETS, 1));
+			4, MIN_SOCKETS, MAX_SOCKETS, 1));
 
 	private JButton btnPotvrdit = new JButton("Potvrdiť");
 
@@ -59,7 +61,7 @@ public class KlientGui {
 
 	private JButton btnStartPause = new JButton("Spustiť sťahovanie");
 
-	private JButton btnStop = new JButton("Ukončiť sťahovanie");
+	private JButton btnStop = new JButton("Zrušiť sťahovanie");
 
 	private InetAddress adresa;
 
@@ -71,7 +73,11 @@ public class KlientGui {
 
 	private long velkostSuboru;
 
-	private int velkostChunku;
+	private int dlzkaChunku;
+
+	private int pocetChunkov;
+
+	private CopyOnWriteArrayList<Integer> aktualnyStav;
 
 	private boolean pokracovat = false;
 
@@ -160,10 +166,10 @@ public class KlientGui {
 	}
 
 	private void overSpojenie() {
-		final SwingWorker<Integer, Void> testSpojenia = new SwingWorker<Integer, Void>() {
+		final SwingWorker<Void, Void> testSpojenia = new SwingWorker<Void, Void>() {
 
 			@Override
-			protected Integer doInBackground() throws Exception {
+			protected Void doInBackground() throws Exception {
 				Socket soket = new Socket(adresa, cisloPortu);
 
 				PrintWriter pw = new PrintWriter(soket.getOutputStream());
@@ -175,32 +181,32 @@ public class KlientGui {
 				pw.flush();
 
 				String nazovSuboru = br.readLine();
+				new File(ADRESAR_PRE_ULOZENIE).mkdirs();
 				subor = new File(ADRESAR_PRE_ULOZENIE + nazovSuboru);
 				velkostSuboru = Long.parseLong(br.readLine());
-				velkostChunku = Integer.parseInt(br.readLine());
+				dlzkaChunku = Integer.parseInt(br.readLine());
+
+				pocetChunkov = (int) velkostSuboru / dlzkaChunku;
+				if (!(velkostSuboru % dlzkaChunku == 0)) {
+					pocetChunkov++;
+				}
 
 				System.out.println(subor + " " + velkostSuboru + " "
-						+ velkostChunku);
+						+ dlzkaChunku + " " + pocetChunkov);
 
-				// zisti aktuálny stav sťahovania
-				if (!subor.isDirectory() && subor.exists()) {
-					BufferedInputStream bis = new BufferedInputStream(
-							new FileInputStream(subor));
-					byte[] bytes = new byte[velkostChunku];
-					int pocet_chunkov = (int) velkostSuboru / velkostChunku;
-					Integer aktualnyStav = pocet_chunkov;
-					for (int i = 0; i < pocet_chunkov; i++) {
-						bis.read(bytes, i * velkostChunku, velkostChunku);
-						for (int j = 0; j < bytes.length; j++) {
-							if (bytes[j] != 0) {
-								aktualnyStav--;
-								break;
-							}
-						}
-					}
-					bis.close();
-					return aktualnyStav;
+				List<Integer> aktualnyStavList = new ArrayList<Integer>(
+						pocetChunkov);
+				for (int i = 0; i < pocetChunkov; i++) {
+					aktualnyStavList.add(new Integer(0));
 				}
+
+				if (!subor.isDirectory() && subor.exists()) {
+					// TODO zisti aktuálny stav sťahovania
+
+				}
+
+				aktualnyStav = new CopyOnWriteArrayList<Integer>(
+						aktualnyStavList);
 
 				soket.close();
 
@@ -209,10 +215,9 @@ public class KlientGui {
 
 			@Override
 			protected void done() {
-				Integer aktualnyStav = null;
 				// kontrola, či nenastala výnimka
 				try {
-					aktualnyStav = get();
+					get();
 				} catch (InterruptedException e) {
 					JOptionPane.showMessageDialog(frame,
 							"Zlyhalo spojenie so serverom.", "Varovanie",
@@ -230,7 +235,7 @@ public class KlientGui {
 					if (!subor.isDirectory() && subor.exists()) {
 						btnStartPause.setText("Pokračovať v sťahovaní");
 						pokracovat = true;
-						progressBar.setValue(aktualnyStav);
+						// TODO nastav progressBar
 					}
 					btnStartPause.setEnabled(true);
 					btnStop.setEnabled(true);
@@ -240,8 +245,7 @@ public class KlientGui {
 
 					progressBar.setStringPainted(true);
 					progressBar.setMinimum(0);
-					progressBar.setMaximum((int) velkostSuboru / velkostChunku);
-					// TODO +1 ???
+					// TODO nastav maximum pre progressBar
 				} else {
 					txtAdresaServeru.setEnabled(true);
 					txtPort.setEnabled(true);
@@ -257,20 +261,18 @@ public class KlientGui {
 	private void btnStartPauseActionPerformed() {
 		// TODO skontroluj či začína, alebo pokračuje
 		// TODO spusti sťahovanie
-		SwingWorker<Void, Integer> worker = new SwingWorker<Void, Integer>() {
+		KlientExecutor executor = new KlientExecutor(adresa, cisloPortu,
+				pocetSoketov, subor, velkostSuboru, dlzkaChunku, aktualnyStav);
+		executor.addPropertyChangeListener(this);
+		executor.execute();
+	}
 
-			@Override
-			protected Void doInBackground() throws Exception {
-				// TODO Auto-generated method stub
-				return null;
-			}
-
-			@Override
-			protected void process(List<Integer> chunks) {
-				// TODO Auto-generated method stub
-			}
-		};
-		worker.execute();
+	public void propertyChange(PropertyChangeEvent evt) {
+		// TODO dokonč + skontroluj
+		if ("progress" == evt.getPropertyName()) {
+			int progress = (Integer) evt.getNewValue();
+			progressBar.setValue(progress);
+		}
 	}
 
 	private void btnStopActionPerformed() {
