@@ -6,8 +6,11 @@ import java.io.RandomAccessFile;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicLong;
 
-public class KlientJob implements Callable<Integer> {
+public class KlientJob implements Callable<AtomicLong> {
+
+	private static final int MAX_DLZKA = 1000000;
 
 	private final InetAddress adresa;
 
@@ -15,25 +18,31 @@ public class KlientJob implements Callable<Integer> {
 
 	private final RandomAccessFile suborRAF;
 
-	private final int offset;
+	private final long offset;
 
 	private final int dlzka;
 
 	public KlientJob(InetAddress adresa, int cisloPortu,
-			RandomAccessFile suborRAF, int offset, int dlzka) {
+			RandomAccessFile suborRAF, long offset, long dlzka) {
 		this.adresa = adresa;
 		this.cisloPortu = cisloPortu;
 		this.suborRAF = suborRAF;
 		this.offset = offset;
-		this.dlzka = dlzka;
+
+		int dlzkaPom = (int) dlzka;
+		if (dlzkaPom > MAX_DLZKA) {
+			dlzkaPom = MAX_DLZKA;
+		}
+		this.dlzka = dlzkaPom;
 	}
 
 	@Override
-	public Integer call() throws Exception {
-		System.out.println("Spustam job: " + offset + " " + dlzka);
+	public AtomicLong call() throws Exception {
+		if (dlzka <= 0) {
+			return new AtomicLong(0);
+		}
 
 		Socket soket = new Socket(adresa, cisloPortu);
-		soket.setKeepAlive(true);
 
 		PrintWriter pw = new PrintWriter(soket.getOutputStream());
 		pw.println("data");
@@ -44,13 +53,15 @@ public class KlientJob implements Callable<Integer> {
 		InputStream is = soket.getInputStream();
 		byte[] bytes = new byte[dlzka];
 
-		int precitane = is.read(bytes, 0, dlzka);
+		final int precitane = is.read(bytes);
 
-		suborRAF.write(bytes, offset, dlzka);
+		synchronized (suborRAF) {
+			suborRAF.seek(offset);
+			suborRAF.write(bytes, 0, precitane);
+		}
 
 		soket.close();
 
-		return precitane;
+		return new AtomicLong(precitane);
 	}
-
 }
