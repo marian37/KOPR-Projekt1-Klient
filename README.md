@@ -1,6 +1,8 @@
 # KOPR-Projekt1-Server
 Moja implementácia **klient**a pre projekt na predmet **KOPR** (Konkurentné programovanie) vyučovaný na [ics.upjs.sk](http://www.ics.upjs.sk/)
 
+*Pozn.* Implementácia nie je optimálna.
+
 ### Zadanie projektu
 Vytvorte klient-server aplikáciu na kopírovanie súboru. Požadované vlastnosti:
 * Sťahovanie súboru prebieha paralelne cez používateľom daný počet TCP soketov.
