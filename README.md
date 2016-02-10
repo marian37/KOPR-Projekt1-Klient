@@ -1,4 +1,4 @@
-# KOPR-Projekt1-Server
+# KOPR-Projekt1-Klient
 Moja implementácia **klient**a pre projekt na predmet **KOPR** (Konkurentné programovanie) vyučovaný na [ics.upjs.sk](http://www.ics.upjs.sk/)
 
 *Pozn.* Implementácia nie je optimálna.
